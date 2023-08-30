@@ -1,0 +1,58 @@
+
+---
+- name: Init servers
+  hosts: all
+  become: yes
+
+  tasks:
+  - name: Update and upgrade apt packages
+    ansible.builtin.apt:
+      upgrade: yes
+      update_cache: yes
+      cache_valid_time: 86400 #One day
+
+  - name: Install "sudo" and "ssh"
+    ansible.builtin.apt:
+      pkg:
+      - sudo
+      - openssh-client
+      state: latest
+
+  - name: Add the user  with a bash shell, appending the group 'sudo' to the user's groups
+    ansible.builtin.user:
+      name: "{{ user }}"
+      password: "{{ password | password_hash('sha512')}}"
+      shell: /bin/bash
+      groups: sudo
+      append: yes
+  
+  - name: Configure SSH
+    block:
+      - name: Install public keys
+        ansible.posix.authorized_key:
+          user: "{{ user }}"
+          state: present
+          key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+
+      - name: Disable with Password Login
+        lineinfile:
+          dest: /etc/ssh/sshd_config
+          regexp: '^PasswordAuthentication'
+          line: "PasswordAuthentication no"
+          state: present
+          backup: yes
+     
+      - name: Disable Root Login
+        lineinfile:
+          dest: /etc/ssh/sshd_config
+          regexp: '^PermitRootLogin'
+          line: "PermitRootLogin no"
+          state: present
+          backup: yes
+
+      - name: Restart SSH
+        ansible.builtin.systemd_service:
+          name: sshd
+          state: restarted
+
+...
